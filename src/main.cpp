@@ -3,9 +3,14 @@
 #include <RelayModule.cpp>
 #include "CoreUnit.cpp"
 #include "BrakingSensor.cpp"
-// #include "DHT.h"
-// #include "remote.cpp"
 
+#include <BLEDevice.h>
+#include <BLEServer.h>
+#include <BLEUtils.h>
+#include <BLE2902.h>
+#include <ArduinoJson.h>
+
+// #include "DHT.h"
 
 
 // define coreUnit object
@@ -18,6 +23,15 @@ CoreUnit coreUnit (
 // define braking sensor object
 BrakingSensor brakingSensor;
 
+// define bluetooth
+BLEServer *pServer = nullptr;
+BLECharacteristic *pCharacteristic = nullptr;
+
+// Define a custom service and characteristic UUIDs
+const char *SERVICE_UUID = "f069f452-031a-4572-ba01-5748e749498e";
+const char *CHARACTERISTIC_UUID = "75930062-af64-45eb-8397-8bffacd95516";
+
+bool deviceConnected = false;
 
 // remote pins and configuration
 // yk04 pinout
@@ -61,6 +75,12 @@ unsigned long lastTime = 0;
 int vibrationCount = 0;
 
 
+// hazard auto level
+int hazardAutoLevel = 0;
+bool autoHazardState = true;
+int hazardDuration = 300;
+
+
 // // define MQ135 sensor pin and reference voltage
 // #define MQ135_PIN 14    // ESP32 ADC pin
 // #define VCC 3.3         // ESP32 ADC ref 
@@ -70,6 +90,96 @@ int vibrationCount = 0;
 // #define DHTTYPE DHT11   // or DHT11
 // DHT dht(DHTPIN, DHTTYPE);
 
+
+class MyServerCallbacks : public BLEServerCallbacks {
+  void onConnect(BLEServer* pServer) {
+    deviceConnected = true;
+    Serial.println("Device connected");
+  }
+
+  void onDisconnect(BLEServer* pServer) {
+    deviceConnected = false;
+    Serial.println("Device disconnected");
+    pServer->startAdvertising();  // Restart advertising after disconnect
+  }
+};
+
+
+class MyCharacteristicCallbacks : public BLECharacteristicCallbacks {
+  void onWrite(BLECharacteristic *pCharacteristic) {
+    const String value = pCharacteristic->getValue().c_str();
+    // const char* value = "{\"hello\":\"world\"}";
+    Serial.print("Received data: ");
+    Serial.print(value);
+    Serial.println();
+    if (value.length() > 0) {
+      JsonDocument doc1, doc2;
+
+      DeserializationError error = deserializeJson(doc1, value);
+      if (error) {
+        Serial.print("JSON parsing failed: ");
+        Serial.println(error.c_str());
+        // return;
+      }
+
+      if (!doc1["vertical"].isNull()) {
+        coreUnit.setConfiguration(ConfigurationKey::PITCH_CENTER, doc1["vertical"].as<int>());
+      }
+      if (!doc1["horizontal"].isNull()) {
+        coreUnit.setConfiguration(ConfigurationKey::ROLL_CENTER, doc1["horizontal"].as<int>());
+      }
+      if (!doc1["auto_leveling"].isNull()) {
+        coreUnit.setConfiguration(ConfigurationKey::AUTO_LEVELING, doc1["auto_leveling"].as<int>());
+      }
+      if (!doc1["auto_hazard_level"].isNull()) {
+        hazardAutoLevel = doc1["auto_hazard_level"].as<int>();
+        if (hazardAutoLevel == 0) {
+          hazardDuration = 200;
+        } else if (hazardAutoLevel == 1) {
+          hazardDuration = 100;
+        } else {
+          hazardDuration = 50;
+        }
+
+        Serial.print("Set hazard auto level to ");
+        Serial.println(hazardAutoLevel);
+        Serial.println("Hazard duration: " + String(hazardDuration) + " ms");
+      }
+      if (!doc1["auto_hazard"].isNull()) {
+        autoHazardState = doc1["auto_hazard"].as<int>() == 0? false : true;
+      }
+      
+    }
+  }
+};
+
+void initializeBluetooth() {
+  // Initialize BLE
+  BLEDevice::init("SAFORA");
+
+  // Create BLE Server
+  pServer = BLEDevice::createServer();
+  pServer->setCallbacks(new MyServerCallbacks());
+
+  // Create BLE Service
+  BLEService *pService = pServer->createService(SERVICE_UUID);
+
+  // Create a writable characteristic
+  pCharacteristic = pService->createCharacteristic(
+    CHARACTERISTIC_UUID,
+    BLECharacteristic::PROPERTY_WRITE
+  );
+
+  pCharacteristic->setCallbacks(new MyCharacteristicCallbacks());
+
+  // Start the service
+  pService->start();
+
+  // Start advertising
+  pServer->getAdvertising()->start();
+
+  Serial.println("Waiting for a connection...");
+}
 
 // coreUnit task function to run on core 0
 void coreUnitTask(void *parameter) {
@@ -93,7 +203,7 @@ void coreUnitTask(void *parameter) {
     // --- Calibration Phase ---
     if (!brakingSensor.isCalibrated()) {
       brakingSensor.calibrate(ax);
-      Serial.println("Calibrating...");
+      // Serial.println("Calibrating...");
       vTaskDelay(pdMS_TO_TICKS(50));
       continue;
     }
@@ -108,24 +218,25 @@ void coreUnitTask(void *parameter) {
 
     // --- Braking Pulse Logic ---
     if (intensity > 50 && !pulsing && systemState == HIGH) {
-      pulsing = true;
-      pulseStartTime = millis();
-      lastToggleTime = millis();
-      relayState = false;
-      Serial.println("Braking pulse started");
+      if (autoHazardState) {
+        pulsing = true;
+        pulseStartTime = millis();
+        lastToggleTime = millis();
+        relayState = false;
+        Serial.println("Braking pulse started");
+      }
     }
 
     if (pulsing) {
       unsigned long now = millis();
-
-      // Stop after 5 seconds
       if (now - pulseStartTime >= 3000) {
         pulsing = false;
         relay.signalOff();
         Serial.println("Braking pulse ended");
       }
+
       // Toggle every 100 ms
-      else if (now - lastToggleTime >= 100) {
+      else if (now - lastToggleTime >= hazardDuration) {
         lastToggleTime = now;
         relayState = !relayState;
         relayState ? relay.signalOn() : relay.signalOff();
@@ -253,6 +364,7 @@ void readVibration() {
 
 void setup() {
   Serial.begin(115200);
+  initializeBluetooth();
   // initialize remote buttons
   pinMode(A_PIN, INPUT);
   pinMode(B_PIN, INPUT);

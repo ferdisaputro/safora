@@ -2,8 +2,15 @@
 #include <Wire.h>
 #include <ESP32Servo.h>
 #include <MPU6050.h>
+#include <ArduinoJson.h>
 
 #define RAD_TO_DEG (180.0f / PI)
+
+enum ConfigurationKey {
+  PITCH_CENTER,
+  ROLL_CENTER,
+  AUTO_LEVELING
+};
 
 class CoreUnit {
 private:
@@ -46,6 +53,8 @@ private:
   float offSetRoll = 0.0f;
 
   unsigned long lastPrint = 0;
+  
+  bool autoLeveling = true;
 
 public:
 	CoreUnit(MPU6050 mpu1Address, MPU6050 mpu2Address) {
@@ -105,15 +114,31 @@ public:
     filteredRoll = 0;
     filteredPitch = 0;
 
-    Serial.print("Kalibrasi selesai -> offSetRoll: ");
-    Serial.print(offSetRoll, 3);
-    Serial.print("  offSetPitch: ");
-    Serial.println(offSetPitch, 3);
+    // Serial.print("Kalibrasi selesai -> offSetRoll: ");
+    // Serial.print(offSetRoll, 3);
+    // Serial.print("  offSetPitch: ");
+    // Serial.println(offSetPitch, 3);
+  }
+
+  void setConfiguration(ConfigurationKey key, int value) {
+    Serial.println("Setting configuration: " + String(key) + " to " + String(value));
+    if (key == ConfigurationKey::PITCH_CENTER) {
+      pitchCenter = value;
+    } else if (key == ConfigurationKey::ROLL_CENTER) {
+      rollCenter = value;
+    } else if (key == ConfigurationKey::AUTO_LEVELING) {
+      autoLeveling = value == 0? false : true;
+    }
   }
 
 	// float getGForce(int16_t ax, int16_t ay, int16_t az) {
 	// 	return sqrtf(ax*ax + ay*ay + az*az) / 16384.0f; // assuming accelerometer range is set to ±2g
 	// }
+
+  void resetHeadlampPos() {
+    servoRoll.write(90 + rollCenter);
+    servoPitch.write(90 + pitchCenter);
+  }
 
   // ==== UPDATE ====
   void update(bool &systemState, int16_t &ax, int16_t &ay, int16_t &az, float &roll, float &pitch, RelayModule relay) {
@@ -135,9 +160,8 @@ public:
 		// float g2 = getGForce(ax2, ay2, az2);
 		// float gTotal = (g1 + g2) / 2.0f;
 
-    if (systemState != HIGH) {
-      servoRoll.write(90 + rollCenter);
-      servoPitch.write(90 + pitchCenter);
+    if (!systemState || !autoLeveling) {
+      resetHeadlampPos();
       return;
     }
 
@@ -157,7 +181,6 @@ public:
       filteredRoll > ECThreshold || 
       filteredRoll < -ECThreshold
     ) {
-      Serial.println('offside');
       systemState = LOW;
       servoPosRoll = 90 + rollCenter;
       servoPosPitch = 90 + pitchCenter;
@@ -167,7 +190,7 @@ public:
     roll = servoPosRoll;
     pitch = servoPosPitch;
 
-    Serial.print("Roll: "); Serial.print(filteredRoll, 2); Serial.print(" | Pitch: "); Serial.println(filteredPitch, 2);
+    // Serial.print("Roll: "); Serial.print(filteredRoll, 2); Serial.print(" | Pitch: "); Serial.println(filteredPitch, 2);
 
     servoRoll.write(servoPosRoll);
     servoPitch.write(servoPosPitch);

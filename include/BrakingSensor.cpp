@@ -21,7 +21,7 @@ public:
     sum += (axRaw / sensitivity);
     count++;
 
-    if (count >= 50) { // average of 100 samples
+    if (count >= 100) { // average of 100 samples
       baseline = sum / count;
       calibrated = true;
       sum = 0;
