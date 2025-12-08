@@ -3,68 +3,68 @@
 // ===== Relay Module Class =====
 class RelayModule {
 private:
-  int r1, r2, r3, r4;
+  int r1, r2, r3, r4; //pin relay
 
 public:
-  RelayModule(int rp1, int rp2, int rp3, int rp4) {
-    r1 = rp1;
-    r2 = rp2;
-    r3 = rp3;
-    r4 = rp4;
+  RelayModule(int rp1, int rp2, int rp3, int rp4) { //konstruktor kelas relay module
+    r1 = rp1; //inisialisasi pin relay 1
+    r2 = rp2;//inisialisasi pin relay 2
+    r3 = rp3;//inisialisasi pin relay 3
+    r4 = rp4;//inisialisasi pin relay 4
   }
 
   void begin() {
-    pinMode(r1, OUTPUT);
-    pinMode(r2, OUTPUT);
-    pinMode(r3, OUTPUT);
-    pinMode(r4, OUTPUT);
+    pinMode(r1, OUTPUT);//set pin relay 1 sebagai output
+    pinMode(r2, OUTPUT);//set pin relay 2 sebagai output
+    pinMode(r3, OUTPUT);//set pin relay 3 sebagai output
+    pinMode(r4, OUTPUT);//set pin relay 4 sebagai output
     // default all HIGH (inactive)
-    digitalWrite(r1, HIGH);
-    digitalWrite(r2, HIGH);
-    digitalWrite(r3, HIGH);
-    digitalWrite(r4, HIGH);
+    digitalWrite(r1, HIGH);//set pin relay 1 ke HIGH (nonaktif)
+    digitalWrite(r2, HIGH);//set pin relay 2 ke HIGH (nonaktif)
+    digitalWrite(r3, HIGH);//set pin relay 3 ke HIGH (nonaktif)
+    digitalWrite(r4, HIGH);//set pin relay 4 ke HIGH (nonaktif)
   }
 
-  void singleStatusSignal() {
-    digitalWrite(r1, LOW);
+  void singleStatusSignal() { //sinyal status tunggal //fungsi untuk memberikan sinyal status tunggal melalui relay
+    digitalWrite(r1, LOW);//set pin relay 1 ke LOW (aktif) //low untuk aktif karena menggunakan relay module tipe active low
+    digitalWrite(r2, LOW); //set pin relay 2 ke LOW (aktif) //low untuk aktif karena menggunakan relay module tipe active low
+    delay(230);//tunda selama 230 ms
+    digitalWrite(r1, HIGH);//set pin relay 1 ke HIGH (nonaktif) //high untuk nonaktif karena menggunakan relay module tipe active low
+    digitalWrite(r2, HIGH);// set pin relay 2 ke HIGH (nonaktif) //high untuk nonaktif karena menggunakan relay module tipe active low
+  }
+
+  void statusSignal() { //sinyal status //fungsi untuk memberikan sinyal status melalui relay
+    digitalWrite(r1, LOW); //aktifkan relay 1 dan 2 secara bergantian dengan delay
     digitalWrite(r2, LOW);
-    delay(230);
-    digitalWrite(r1, HIGH);
+    delay(230); //tunda selama 230 ms
+    digitalWrite(r1, HIGH); //nonaktifkan relay 1 dan 2 secara bergantian dengan delay
     digitalWrite(r2, HIGH);
-  }
-
-  void statusSignal() {
-    digitalWrite(r1, LOW);
+    delay(230); //tunda selama 230 ms
+    digitalWrite(r1, LOW); //aktifkan relay 1 dan 2 secara bergantian dengan delay
     digitalWrite(r2, LOW);
-    delay(230);
-    digitalWrite(r1, HIGH);
-    digitalWrite(r2, HIGH);
-    delay(230);
-    digitalWrite(r1, LOW);
-    digitalWrite(r2, LOW);
-    delay(230);
-    digitalWrite(r1, HIGH);
+    delay(230); //tunda selama 230 ms
+    digitalWrite(r1, HIGH); //nonaktifkan relay 1 dan 2 secara bergantian dengan delay
     digitalWrite(r2, HIGH);
   }
 
-  void signalOn() {
-    GPIO.out_w1tc = (1 << r1); // set LOW fast
-    GPIO.out_w1tc = (1 << r2); // set LOW fast
+  void signalOn() { //fungsi untuk mengaktifkan sinyal melalui relay
+    GPIO.out_w1tc = (1 << r1); // set LOW fast //untuk mengaktifkan sinyal, set pin relay 1 dan 2 ke LOW dengan cepat menggunakan register GPIO
+    GPIO.out_w1tc = (1 << r2); // set LOW fast  //untuk mengaktifkan sinyal, set pin relay 1 dan 2 ke LOW dengan cepat menggunakan register GPIO
   }
 
-  void signalOff() {
-    GPIO.out_w1ts = (1 << r1); // set HIGH fast
+  void signalOff() { //fungsi untuk menonaktifkan sinyal melalui relay
+    GPIO.out_w1ts = (1 << r1); // set HIGH fast //untuk menonaktifkan sinyal, set pin relay 1 dan 2 ke HIGH dengan cepat menggunakan register GPIO
     GPIO.out_w1ts = (1 << r2); // set HIGH fast
   }
 
-  void engineStart() {
-    digitalWrite(r4, LOW);
-    delay(2000);
-    digitalWrite(r4, HIGH);
+  void engineStart() { //fungsi untuk menghidupkan mesin melalui relay
+    digitalWrite(r4, LOW); // activate relay 4 to start engine //aktifkan relay 4 untuk menghidupkan mesin
+    delay(2000); // hold for 2 seconds //tahan selama 2 detik
+    digitalWrite(r4, HIGH); // deactivate relay 4 //nonaktifkan relay 4
   }
 
-  void setSystem(bool on) {
-    digitalWrite(r3, on ? LOW : HIGH);
+  void setSystem(bool on) { //fungsi untuk mengatur sistem utama melalui relay
+    digitalWrite(r3, on ? LOW : HIGH); // set relay 3 berdasarkan status sistem //misalnya, jika on true maka set ke LOW (aktif), jika false maka set ke HIGH (nonaktif)
   }
 };
 
